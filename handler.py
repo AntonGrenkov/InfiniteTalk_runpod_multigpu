@@ -24,7 +24,6 @@ OUTPUT_DIR = Path(os.environ.get("OUTPUT_DIR", "/workspace/outputs"))
 MASTER_ADDR = os.environ.get("MASTER_ADDR", "127.0.0.1")
 MASTER_PORT = os.environ.get("MASTER_PORT", "29500")
 
-
 def _spawn_generate_worker(local_rank: int, args_namespace, world_size: int) -> None:
     """Entry point for torch.multiprocessing to run distributed generation."""
     os.environ["RANK"] = str(local_rank)
