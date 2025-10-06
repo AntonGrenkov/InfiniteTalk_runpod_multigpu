@@ -235,7 +235,7 @@ class InfiniteTalkRunner:
             frame_num=chunk_frame_num,
             max_frame_num=max_frame_num,
             ckpt_dir=str(self.model_dir / "Wan2.1-I2V-14B-480P"),
-            infinitetalk_dir=str(self.model_dir / "InfiniteTalk" / "single" / "single" / "infinitetalk.safetensors"),
+            infinitetalk_dir=str(self.model_dir / "InfiniteTalk" / "single" / "infinitetalk.safetensors"),
             quant_dir=None,
             wav2vec_dir=str(self.model_dir / "chinese-wav2vec2-base"),
             dit_path=None,
