@@ -130,7 +130,20 @@ class InfiniteTalkRunner:
             )
             print(f"--- {description or filename} downloaded ---")
             if not local_path.exists():
+                print(f"--- RunPod: download fallback for {description or filename} ---")
                 print(f"--- WARNING: expected {local_path} after download but file missing ---")
+                cached = hf_hub_download(
+                    repo_id=repo_id,
+                    filename=filename,
+                    revision=revision,
+                )
+                os.makedirs(local_path.parent, exist_ok=True)
+                shutil.copy2(cached, local_path)
+                print(f"--- Copied {description or filename} from cache to {local_path} ---")
+        else:
+            os.makedirs(local_path.parent, exist_ok=True)
+            else:
+                os.makedirs(local_path.parent, exist_ok=True)
 
         def download_repo(repo_id: str, local_dir: Path, check_file: str, description: str) -> None:
             check_path = local_dir / check_file
@@ -207,12 +220,24 @@ class InfiniteTalkRunner:
                 local_path=infinitetalk_dir / "infinitetalk.safetensors",
                 description="InfiniteTalk weights",
             )
+            download_repo(
+                repo_id="MeiGen-AI/InfiniteTalk",
+                local_dir=infinitetalk_dir,
+                check_file="infinitetalk.safetensors",
+                description="InfiniteTalk repo contents",
+            )
 
             download_file(
                 repo_id="vrgamedevgirl84/Wan14BT2VFusioniX",
                 filename="FusionX_LoRa/Wan2.1_I2V_14B_FusionX_LoRA.safetensors",
                 local_path=model_root / "FusionX_LoRa" / "Wan2.1_I2V_14B_FusionX_LoRA.safetensors",
                 description="FusioniX LoRA",
+            )
+            download_repo(
+                repo_id="vrgamedevgirl84/Wan14BT2VFusioniX",
+                local_dir=model_root / "FusionX_LoRa",
+                check_file="Wan2.1_I2V_14B_FusionX_LoRA.safetensors",
+                description="FusionX repo contents",
             )
 
             print("--- RunPod: Model assets ready ---")
