@@ -538,7 +538,7 @@ def generate(args):
         dit_path=args.dit_path,
         infinitetalk_dir=args.infinitetalk_dir
     )
-    if args.num_persistent_param_in_dit is not None:
+    if args.num_persistent_param_in_dit:
         wan_i2v.vram_management = True
         wan_i2v.enable_vram_management(
             num_persistent_param_in_dit=args.num_persistent_param_in_dit
