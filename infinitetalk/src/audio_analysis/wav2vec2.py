@@ -20,7 +20,8 @@ class Wav2Vec2Model(Wav2Vec2Model):
         output_hidden_states=None,
         return_dict=None,
     ):
-        self.config.output_attentions = True
+        output_attentions = False
+        self.config.output_attentions = False
 
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
@@ -60,7 +61,7 @@ class Wav2Vec2Model(Wav2Vec2Model):
         return BaseModelOutput(
             last_hidden_state=hidden_states,
             hidden_states=encoder_outputs.hidden_states,
-            attentions=encoder_outputs.attentions,
+            attentions=None,
         )
 
 
@@ -84,7 +85,8 @@ class Wav2Vec2Model(Wav2Vec2Model):
         output_hidden_states=None,
         return_dict=None,
     ):
-        self.config.output_attentions = True
+        output_attentions = False
+        self.config.output_attentions = False
 
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
@@ -121,5 +123,5 @@ class Wav2Vec2Model(Wav2Vec2Model):
         return BaseModelOutput(
             last_hidden_state=hidden_states,
             hidden_states=encoder_outputs.hidden_states,
-            attentions=encoder_outputs.attentions,
+            attentions=None,
         )
