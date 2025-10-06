@@ -160,7 +160,6 @@ class InfiniteTalkRunner:
                     "huggingface-cli",
                     "download",
                     "MeiGen-AI/InfiniteTalk",
-                    "single/infinitetalk.safetensors",
                     "--local-dir",
                     str(model_root / "InfiniteTalk"),
                     "--local-dir-use-symlinks",
@@ -171,16 +170,6 @@ class InfiniteTalkRunner:
                 "description": "FusionX LoRA",
                 "paths": [model_root / "FusionX_LoRa" / "Wan2.1_I2V_14B_FusionX_LoRA.safetensors"],
                 "command": [
-                    "huggingface-cli",
-                    "download",
-                    "vrgamedevgirl84/Wan14BT2VFusioniX",
-                    "FusionX_LoRa/Wan2.1_I2V_14B_FusionX_LoRA.safetensors",
-                    "--local-dir",
-                    str(model_root / "FusionX_LoRa"),
-                    "--local-dir-use-symlinks",
-                    "False",
-                ],
-                "fallback": [
                     "huggingface-cli",
                     "download",
                     "vrgamedevgirl84/Wan14BT2VFusioniX",
@@ -208,13 +197,7 @@ class InfiniteTalkRunner:
                         kind = "file" if child.is_file() else "dir"
                         print(f"      - {child.name} ({kind}, {size} bytes)")
             if not all(path.exists() for path in paths):
-                if item.get("fallback"):
-                    print(f"--- Retrying {item['description']} via fallback (full repo download) ---")
-                    subprocess.run(item["fallback"], check=True)
-                if not all(path.exists() for path in paths):
-                    raise FileNotFoundError(
-                        f"Download of {item['description']} incomplete; missing {[str(p) for p in paths]}"
-                    )
+                raise FileNotFoundError(f"Download of {item['description']} incomplete; missing {[str(p) for p in paths]}" )
 
         print("--- RunPod: Model assets ready ---")
         for asset in [
