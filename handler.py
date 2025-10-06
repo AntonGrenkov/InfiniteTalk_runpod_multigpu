@@ -2,6 +2,7 @@ import base64
 import json
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 import urllib.request
@@ -106,151 +107,108 @@ class InfiniteTalkRunner:
         if self._initialized:
             return
 
-        import sys
-        from pathlib import Path
-
-        sys.path.extend(["/workspace", "/workspace/infinitetalk"])
-
-        from huggingface_hub import hf_hub_download, snapshot_download
-
         print("--- RunPod: Initializing models ---")
         model_root = self.model_dir
+        model_root.mkdir(parents=True, exist_ok=True)
 
-        def download_file(repo_id: str, filename: str, local_path: Path, revision: str | None = None, description: str | None = None) -> None:
-            if local_path.exists():
-                print(f"--- {description or filename} already present ---")
-                return
-            print(f"--- Downloading {description or filename} ---")
-            hf_hub_download(
-                repo_id=repo_id,
-                filename=filename,
-                revision=revision,
-                local_dir=local_path.parent,
-                local_dir_use_symlinks=False,
-            )
-            print(f"--- {description or filename} downloaded ---")
-            if not local_path.exists():
-                print(f"--- RunPod: download fallback for {description or filename} ---")
-                print(f"--- WARNING: expected {local_path} after download but file missing ---")
-                cached = hf_hub_download(
-                    repo_id=repo_id,
-                    filename=filename,
-                    revision=revision,
-                )
-                os.makedirs(local_path.parent, exist_ok=True)
-                shutil.copy2(cached, local_path)
-                print(f"--- Copied {description or filename} from cache to {local_path} ---")
-        else:
-            os.makedirs(local_path.parent, exist_ok=True)
-            else:
-                os.makedirs(local_path.parent, exist_ok=True)
+        downloads = [
+            {
+                "description": "Wan2.1 base model",
+                "paths": [model_root / "Wan2.1-I2V-14B-480P" / "config.json"],
+                "command": [
+                    "huggingface-cli",
+                    "download",
+                    "Wan-AI/Wan2.1-I2V-14B-480P",
+                    "--local-dir",
+                    str(model_root / "Wan2.1-I2V-14B-480P"),
+                    "--local-dir-use-symlinks",
+                    "False",
+                ],
+            },
+            {
+                "description": "Chinese wav2vec2 base",
+                "paths": [model_root / "chinese-wav2vec2-base" / "config.json"],
+                "command": [
+                    "huggingface-cli",
+                    "download",
+                    "TencentGameMate/chinese-wav2vec2-base",
+                    "--local-dir",
+                    str(model_root / "chinese-wav2vec2-base"),
+                    "--local-dir-use-symlinks",
+                    "False",
+                ],
+            },
+            {
+                "description": "Chinese wav2vec2 safetensors",
+                "paths": [model_root / "chinese-wav2vec2-base" / "model.safetensors"],
+                "command": [
+                    "huggingface-cli",
+                    "download",
+                    "TencentGameMate/chinese-wav2vec2-base",
+                    "model.safetensors",
+                    "--revision",
+                    "refs/pr/1",
+                    "--local-dir",
+                    str(model_root / "chinese-wav2vec2-base"),
+                    "--local-dir-use-symlinks",
+                    "False",
+                ],
+            },
+            {
+                "description": "InfiniteTalk weights",
+                "paths": [model_root / "InfiniteTalk" / "single" / "infinitetalk.safetensors"],
+                "command": [
+                    "huggingface-cli",
+                    "download",
+                    "MeiGen-AI/InfiniteTalk",
+                    "--local-dir",
+                    str(model_root / "InfiniteTalk"),
+                    "--local-dir-use-symlinks",
+                    "False",
+                ],
+            },
+            {
+                "description": "FusionX LoRA",
+                "paths": [model_root / "FusionX_LoRa" / "Wan2.1_I2V_14B_FusionX_LoRA.safetensors"],
+                "command": [
+                    "huggingface-cli",
+                    "download",
+                    "vrgamedevgirl84/Wan14BT2VFusioniX",
+                    "--local-dir",
+                    str(model_root),
+                    "--local-dir-use-symlinks",
+                    "False",
+                ],
+            },
+        ]
 
-        def download_repo(repo_id: str, local_dir: Path, check_file: str, description: str) -> None:
-            check_path = local_dir / check_file
-            if check_path.exists():
-                print(f"--- {description} already present ---")
-                return
-            print(f"--- Downloading {description} ---")
-            snapshot_download(repo_id=repo_id, local_dir=local_dir)
-            print(f"--- {description} downloaded ---")
+        for item in downloads:
+            paths = item["paths"]
+            if all(path.exists() for path in paths):
+                print(f"--- {item['description']} already present ---")
+                continue
+            print(f"--- Downloading {item['description']} via huggingface-cli ---")
+            subprocess.run(item["command"], check=True)
+            parent_dirs = {path.parent for path in paths}
+            for parent in parent_dirs:
+                if parent.exists():
+                    print(f"   contents of {parent}:")
+                    for child in sorted(parent.iterdir()):
+                        size = child.stat().st_size if child.is_file() else 0
+                        kind = "file" if child.is_file() else "dir"
+                        print(f"      - {child.name} ({kind}, {size} bytes)")
+            if not all(path.exists() for path in paths):
+                raise FileNotFoundError(f"Download of {item['description']} incomplete; missing {[str(p) for p in paths]}" )
 
-        try:
-            wan_model_dir = model_root / "Wan2.1-I2V-14B-480P"
-            wan_model_dir.mkdir(exist_ok=True)
-            (model_root / "FusionX_LoRa").mkdir(parents=True, exist_ok=True)
+        print("--- RunPod: Model assets ready ---")
+        for asset in [
+            model_root / "Wan2.1-I2V-14B-480P" / "config.json",
+            model_root / "FusionX_LoRa" / "Wan2.1_I2V_14B_FusionX_LoRA.safetensors",
+            model_root / "InfiniteTalk" / "single" / "infinitetalk.safetensors",
+        ]:
+            print(f"   asset check: {asset} -> {'OK' if asset.exists() else 'MISSING'}")
 
-            wan_base_files = [
-                ("config.json", "Wan model config"),
-                ("models_t5_umt5-xxl-enc-bf16.pth", "T5 text encoder"),
-                ("models_clip_open-clip-xlm-roberta-large-vit-huge-14.pth", "CLIP vision encoder"),
-                ("Wan2.1_VAE.pth", "VAE weights"),
-            ]
-            for filename, description in wan_base_files:
-                download_file("Wan-AI/Wan2.1-I2V-14B-480P", filename, wan_model_dir / filename, description=description)
-
-            wan_diffusion_files = [
-                "diffusion_pytorch_model-00001-of-00007.safetensors",
-                "diffusion_pytorch_model-00002-of-00007.safetensors",
-                "diffusion_pytorch_model-00003-of-00007.safetensors",
-                "diffusion_pytorch_model-00004-of-00007.safetensors",
-                "diffusion_pytorch_model-00005-of-00007.safetensors",
-                "diffusion_pytorch_model-00006-of-00007.safetensors",
-                "diffusion_pytorch_model-00007-of-00007.safetensors",
-            ]
-            for filename in wan_diffusion_files:
-                download_file("Wan-AI/Wan2.1-I2V-14B-480P", filename, wan_model_dir / filename, description=f"Wan diffusion shard {filename[-10:-5]}")
-
-            tokenizer_dirs = [
-                ("google/umt5-xxl", "T5 tokenizer"),
-                ("xlm-roberta-large", "CLIP tokenizer"),
-            ]
-            for subdir, description in tokenizer_dirs:
-                tokenizer_path = wan_model_dir / subdir
-                if not (tokenizer_path / "tokenizer_config.json").exists():
-                    print(f"--- Downloading {description} ---")
-                    snapshot_download(
-                        repo_id="Wan-AI/Wan2.1-I2V-14B-480P",
-                        allow_patterns=[f"{subdir}/*"],
-                        local_dir=wan_model_dir,
-                    )
-                    print(f"--- {description} downloaded ---")
-                else:
-                    print(f"--- {description} already present ---")
-
-            wav2vec_model_dir = model_root / "chinese-wav2vec2-base"
-            download_repo(
-                repo_id="TencentGameMate/chinese-wav2vec2-base",
-                local_dir=wav2vec_model_dir,
-                check_file="config.json",
-                description="Chinese wav2vec2-base model",
-            )
-            download_file(
-                repo_id="TencentGameMate/chinese-wav2vec2-base",
-                filename="model.safetensors",
-                local_path=wav2vec_model_dir / "model.safetensors",
-                revision="refs/pr/1",
-                description="wav2vec safetensors",
-            )
-
-            infinitetalk_dir = model_root / "InfiniteTalk" / "single"
-            infinitetalk_dir.mkdir(parents=True, exist_ok=True)
-            download_file(
-                repo_id="MeiGen-AI/InfiniteTalk",
-                filename="single/infinitetalk.safetensors",
-                local_path=infinitetalk_dir / "infinitetalk.safetensors",
-                description="InfiniteTalk weights",
-            )
-            download_repo(
-                repo_id="MeiGen-AI/InfiniteTalk",
-                local_dir=infinitetalk_dir,
-                check_file="infinitetalk.safetensors",
-                description="InfiniteTalk repo contents",
-            )
-
-            download_file(
-                repo_id="vrgamedevgirl84/Wan14BT2VFusioniX",
-                filename="FusionX_LoRa/Wan2.1_I2V_14B_FusionX_LoRA.safetensors",
-                local_path=model_root / "FusionX_LoRa" / "Wan2.1_I2V_14B_FusionX_LoRA.safetensors",
-                description="FusioniX LoRA",
-            )
-            download_repo(
-                repo_id="vrgamedevgirl84/Wan14BT2VFusioniX",
-                local_dir=model_root / "FusionX_LoRa",
-                check_file="Wan2.1_I2V_14B_FusionX_LoRA.safetensors",
-                description="FusionX repo contents",
-            )
-
-            print("--- RunPod: Model assets ready ---")
-            for asset in [
-                model_root / "Wan2.1-I2V-14B-480P" / "config.json",
-                model_root / "FusionX_LoRa" / "Wan2.1_I2V_14B_FusionX_LoRA.safetensors",
-                model_root / "InfiniteTalk" / "single" / "infinitetalk.safetensors",
-            ]:
-                print(f"   asset check: {asset} -> {'OK' if asset.exists() else 'MISSING'}")
-            self._initialized = True
-        except Exception as exc:  # noqa: BLE001
-            print(f"--- RunPod: Initialization failed: {exc} ---")
-            raise
+        self._initialized = True
 
     def _build_args(
         self,

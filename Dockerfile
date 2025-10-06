@@ -17,7 +17,7 @@ COPY . /workspace
 RUN sed -i "s/from inspect import ArgSpec/# from inspect import ArgSpec  # Removed for Python 3.11 compatibility/" infinitetalk/wan/multitalk.py
 
 RUN pip install --upgrade pip && \
-    pip install --no-cache-dir runpod misaki[en] ninja psutil packaging flash_attn==2.7.4.post1 pydantic python-magic huggingface_hub soundfile librosa xformers==0.0.28 && \
+    pip install --no-cache-dir runpod misaki[en] ninja psutil packaging flash_attn==2.7.4.post1 pydantic python-magic "huggingface_hub[cli]" soundfile librosa xformers==0.0.28 && \
     pip install --no-cache-dir -r infinitetalk/requirements.txt
 
 COPY start.sh /start.sh
