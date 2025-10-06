@@ -17,12 +17,12 @@ RUN sed -i "s/from inspect import ArgSpec/# from inspect import ArgSpec  # Remov
 
 RUN pip install --upgrade pip && \
     pip install --no-cache-dir runpod misaki[en] ninja psutil packaging flash_attn==2.7.4.post1 pydantic python-magic huggingface_hub soundfile librosa xformers==0.0.28 && \
-    pip install --no-cache-dir -r infinitetalk/requirements.txt && \
-    pip install --no-cache-dir .
+    pip install --no-cache-dir -r infinitetalk/requirements.txt
 
 COPY start.sh /start.sh
 RUN chmod +x /start.sh
 
-ENV WAN_GPU_COUNT=0
+ENV WAN_GPU_COUNT=0 \
+    PYTHONPATH=/workspace:/workspace/infinitetalk:$PYTHONPATH
 
 CMD ["/start.sh"]
