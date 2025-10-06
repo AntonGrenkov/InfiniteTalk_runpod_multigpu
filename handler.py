@@ -126,6 +126,7 @@ class InfiniteTalkRunner:
                 filename=filename,
                 revision=revision,
                 local_dir=local_path.parent,
+                local_dir_use_symlinks=False,
             )
             print(f"--- {description or filename} downloaded ---")
 
