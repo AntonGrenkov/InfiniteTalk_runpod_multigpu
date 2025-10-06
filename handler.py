@@ -129,6 +129,8 @@ class InfiniteTalkRunner:
                 local_dir_use_symlinks=False,
             )
             print(f"--- {description or filename} downloaded ---")
+            if not local_path.exists():
+                print(f"--- WARNING: expected {local_path} after download but file missing ---")
 
         def download_repo(repo_id: str, local_dir: Path, check_file: str, description: str) -> None:
             check_path = local_dir / check_file
@@ -214,6 +216,12 @@ class InfiniteTalkRunner:
             )
 
             print("--- RunPod: Model assets ready ---")
+            for asset in [
+                model_root / "Wan2.1-I2V-14B-480P" / "config.json",
+                model_root / "FusionX_LoRa" / "Wan2.1_I2V_14B_FusionX_LoRA.safetensors",
+                model_root / "InfiniteTalk" / "single" / "infinitetalk.safetensors",
+            ]:
+                print(f"   asset check: {asset} -> {'OK' if asset.exists() else 'MISSING'}")
             self._initialized = True
         except Exception as exc:  # noqa: BLE001
             print(f"--- RunPod: Initialization failed: {exc} ---")
@@ -295,6 +303,21 @@ class InfiniteTalkRunner:
         from PIL import Image as PILImage
 
         self._ensure_models()
+
+        critical_assets = [
+            self.model_dir / "FusionX_LoRa" / "Wan2.1_I2V_14B_FusionX_LoRA.safetensors",
+            self.model_dir / "InfiniteTalk" / "single" / "infinitetalk.safetensors",
+            self.model_dir / "Wan2.1-I2V-14B-480P" / "config.json",
+        ]
+        missing_assets = [asset for asset in critical_assets if not asset.exists()]
+        if missing_assets:
+            print(f"--- RunPod: Missing critical assets detected {missing_assets}. Redownloading... ---")
+            self._initialized = False
+            self._ensure_models()
+            critical_assets = [asset for asset in critical_assets]
+            still_missing = [asset for asset in critical_assets if not asset.exists()]
+            if still_missing:
+                raise FileNotFoundError(f"Critical assets still missing after reinitialization: {still_missing}")
 
         overrides = overrides or {}
 
