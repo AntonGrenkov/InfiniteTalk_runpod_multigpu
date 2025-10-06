@@ -59,15 +59,30 @@ def _decode_reference(ref: str) -> bytes:
         _, encoded = ref.split(",", 1)
         return base64.b64decode(encoded)
 
-    candidate_path = Path(ref)
-    if candidate_path.exists():
-        return candidate_path.read_bytes()
+    candidate_path = None
+    try:
+        candidate_path = Path(ref)
+        if candidate_path.exists():
+            return candidate_path.read_bytes()
+    except OSError:
+        # Often triggered when a base64 string starts with '/' and Path tries to treat it as an absolute path.
+        candidate_path = None
 
     # Fallback: treat as raw base64 string
     try:
         return base64.b64decode(ref, validate=True)
     except Exception as exc:  # noqa: BLE001
         raise ValueError(f"Unsupported reference format: {exc}") from exc
+
+
+OPTION_KEYS = {
+    "size": str,
+    "sample_steps": int,
+    "sample_text_guide_scale": float,
+    "sample_audio_guide_scale": float,
+    "color_correction_strength": float,
+    "mode": str,
+}
 
 
 class InfiniteTalkRunner:
@@ -126,6 +141,7 @@ class InfiniteTalkRunner:
         try:
             wan_model_dir = model_root / "Wan2.1-I2V-14B-480P"
             wan_model_dir.mkdir(exist_ok=True)
+            (model_root / "FusionX_LoRa").mkdir(parents=True, exist_ok=True)
 
             wan_base_files = [
                 ("config.json", "Wan model config"),
@@ -202,10 +218,28 @@ class InfiniteTalkRunner:
             print(f"--- RunPod: Initialization failed: {exc} ---")
             raise
 
-    def _build_args(self, image_path: str, audio_path: str, prompt: str | None, input_json_path: str, mode: str, chunk_frame_num: int, max_frame_num: int) -> SimpleNamespace:
+    def _build_args(
+        self,
+        image_path: str,
+        audio_path: str,
+        prompt: str | None,
+        input_json_path: str,
+        mode: str,
+        chunk_frame_num: int,
+        max_frame_num: int,
+        overrides: dict[str, object],
+    ) -> SimpleNamespace:
+        size = str(overrides.get("size", "infinitetalk-720"))
+        sample_steps = int(overrides.get("sample_steps", 8))
+        sample_text_guide_scale = float(overrides.get("sample_text_guide_scale", 1.0))
+        sample_audio_guide_scale = float(overrides.get("sample_audio_guide_scale", 6.0))
+        color_correction_strength = float(overrides.get("color_correction_strength", 0.2))
+        if isinstance(overrides.get("mode"), str):
+            mode = overrides["mode"]
+
         return SimpleNamespace(
             task="infinitetalk-14B",
-            size="infinitetalk-720",
+            size=size,
             frame_num=chunk_frame_num,
             max_frame_num=max_frame_num,
             ckpt_dir=str(self.model_dir / "Wan2.1-I2V-14B-480P"),
@@ -227,10 +261,10 @@ class InfiniteTalkRunner:
             input_json=input_json_path,
             motion_frame=25,
             mode=mode,
-            sample_steps=8,
+            sample_steps=sample_steps,
             sample_shift=3.0,
-            sample_text_guide_scale=1.0,
-            sample_audio_guide_scale=6.0,
+            sample_text_guide_scale=sample_text_guide_scale,
+            sample_audio_guide_scale=sample_audio_guide_scale,
             num_persistent_param_in_dit=0,
             audio_mode="localfile",
             use_teacache=True,
@@ -238,13 +272,19 @@ class InfiniteTalkRunner:
             use_apg=True,
             apg_momentum=-0.75,
             apg_norm_threshold=55,
-            color_correction_strength=0.2,
+            color_correction_strength=color_correction_strength,
             scene_seg=False,
             quant=None,
             prompt=prompt,
         )
 
-    def generate(self, image_ref: str, audio_ref: str, prompt: str | None) -> Path:
+    def generate(
+        self,
+        image_ref: str,
+        audio_ref: str,
+        prompt: str | None,
+        overrides: dict[str, object] | None = None,
+    ) -> tuple[Path, SimpleNamespace]:
         import io
         import librosa
         import magic
@@ -254,6 +294,8 @@ class InfiniteTalkRunner:
         from PIL import Image as PILImage
 
         self._ensure_models()
+
+        overrides = overrides or {}
 
         image_bytes = self._download_and_validate(
             _decode_reference(image_ref),
@@ -313,6 +355,21 @@ class InfiniteTalkRunner:
             chunk_frame_num = frame_num
             max_frame_num = frame_num
 
+        requested_mode = overrides.get("mode")
+        if requested_mode is not None:
+            requested_mode = str(requested_mode).lower()
+            if requested_mode not in {"clip", "streaming"}:
+                raise ValueError("mode must be either 'clip' or 'streaming'")
+            if requested_mode == "clip":
+                mode = "clip"
+                chunk_frame_num = frame_num
+                max_frame_num = frame_num
+            else:
+                mode = "streaming"
+                chunk_frame_num = min(chunk_frame_num, 81)
+                max_frame_num = frame_num
+            overrides["mode"] = requested_mode
+
         print(
             f"--- RunPod: Audio {total_audio_duration:.2f}s, frames {frame_num}, chunk {chunk_frame_num}, mode {mode} ---"
         )
@@ -326,7 +383,16 @@ class InfiniteTalkRunner:
             json.dump(input_json_data, tmp_json)
             input_json_path = tmp_json.name
 
-        args = self._build_args(image_path, audio_path, input_json_data["prompt"], input_json_path, mode, chunk_frame_num, max_frame_num)
+        args = self._build_args(
+            image_path,
+            audio_path,
+            input_json_data["prompt"],
+            input_json_path,
+            mode,
+            chunk_frame_num,
+            max_frame_num,
+            overrides,
+        )
 
         temp_output_name = f"{uuid.uuid4()}"
         args.save_file = str(self.output_dir / temp_output_name)
@@ -401,7 +467,7 @@ class InfiniteTalkRunner:
         if temp_audio_dir.exists():
             shutil.rmtree(temp_audio_dir, ignore_errors=True)
 
-        return final_output_path
+        return final_output_path, args
 
 
 RUNNER = InfiniteTalkRunner()
@@ -417,12 +483,28 @@ def handler(event):
     if not image_ref or not audio_ref:
         return {"error": "Both 'image' and 'audio1' inputs are required."}
 
+    overrides: dict[str, object] = {}
+    for key, caster in OPTION_KEYS.items():
+        if key in job_input and job_input[key] is not None:
+            try:
+                overrides[key] = caster(job_input[key])
+            except Exception as exc:  # noqa: BLE001
+                return {"error": f"Invalid value for {key}: {exc}"}
+
     try:
-        video_path = RUNNER.generate(image_ref, audio_ref, prompt)
+        video_path, used_args = RUNNER.generate(image_ref, audio_ref, prompt, overrides)
     except Exception as exc:  # noqa: BLE001
         return {"error": str(exc)}
 
     response: dict[str, str] = {"video_path": str(video_path)}
+    response["generation_params"] = {
+        "size": used_args.size,
+        "sample_steps": used_args.sample_steps,
+        "sample_text_guide_scale": used_args.sample_text_guide_scale,
+        "sample_audio_guide_scale": used_args.sample_audio_guide_scale,
+        "color_correction_strength": used_args.color_correction_strength,
+        "mode": used_args.mode,
+    }
 
     try:
         from runpod.serverless.utils import rp_upload

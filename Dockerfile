@@ -3,7 +3,8 @@ FROM pytorch/pytorch:2.4.1-cuda12.1-cudnn9-devel
 ENV DEBIAN_FRONTEND=noninteractive \
     HF_HUB_ETAG_TIMEOUT=60 \
     MODEL_DIR=/workspace/models \
-    OUTPUT_DIR=/workspace/outputs
+    OUTPUT_DIR=/workspace/outputs \
+    TORCH_CUDA_ARCH_LIST="8.0;8.6;8.9;9.0"
 
 WORKDIR /workspace
 
