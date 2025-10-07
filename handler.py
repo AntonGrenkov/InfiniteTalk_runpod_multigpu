@@ -110,6 +110,18 @@ class InfiniteTalkRunner:
         model_root = self.model_dir
         model_root.mkdir(parents=True, exist_ok=True)
 
+        def _move_nested_file(base_dir: Path, nested_rel_path: str, target_name: str) -> None:
+            nested_path = base_dir / nested_rel_path
+            target_path = base_dir / target_name
+            if nested_path.exists() and not target_path.exists():
+                target_path.parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(nested_path), str(target_path))
+                # Clean up empty parent directories
+                try:
+                    nested_path.parent.rmdir()
+                except OSError:
+                    pass
+
         downloads = [
             {
                 "description": "Wan2.1 base model",
@@ -173,11 +185,17 @@ class InfiniteTalkRunner:
                     "huggingface-cli",
                     "download",
                     "vrgamedevgirl84/Wan14BT2VFusioniX",
+                    "FusionX_LoRa/Wan2.1_I2V_14B_FusionX_LoRA.safetensors",
                     "--local-dir",
                     str(model_root / "FusionX_LoRa"),
                     "--local-dir-use-symlinks",
                     "False",
                 ],
+                "post": lambda: _move_nested_file(
+                    model_root / "FusionX_LoRa",
+                    "FusionX_LoRa/Wan2.1_I2V_14B_FusionX_LoRA.safetensors",
+                    "Wan2.1_I2V_14B_FusionX_LoRA.safetensors",
+                ),
             },
         ]
 
@@ -188,6 +206,8 @@ class InfiniteTalkRunner:
                 continue
             print(f"--- Downloading {item['description']} via huggingface-cli ---")
             subprocess.run(item["command"], check=True)
+            if callable(item.get("post")):
+                item["post"]()
             parent_dirs = {path.parent for path in paths}
             for parent in parent_dirs:
                 if parent.exists():
