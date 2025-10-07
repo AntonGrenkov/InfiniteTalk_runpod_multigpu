@@ -82,6 +82,9 @@ OPTION_KEYS = {
     "sample_audio_guide_scale": float,
     "color_correction_strength": float,
     "mode": str,
+    "quant": str,
+    "quant_dir": str,
+    "use_teacache": lambda v: v if isinstance(v, bool) else str(v).lower() in {"1", "true", "yes", "on"},
 }
 
 
@@ -245,6 +248,11 @@ class InfiniteTalkRunner:
         sample_text_guide_scale = float(overrides.get("sample_text_guide_scale", 1.0))
         sample_audio_guide_scale = float(overrides.get("sample_audio_guide_scale", 6.0))
         color_correction_strength = float(overrides.get("color_correction_strength", 0.2))
+        quant = overrides.get("quant")
+        quant_dir = overrides.get("quant_dir")
+        use_teacache = overrides.get("use_teacache")
+        if use_teacache is None:
+            use_teacache = True
         if isinstance(overrides.get("mode"), str):
             mode = overrides["mode"]
 
@@ -255,7 +263,8 @@ class InfiniteTalkRunner:
             max_frame_num=max_frame_num,
             ckpt_dir=str(self.model_dir / "Wan2.1-I2V-14B-480P"),
             infinitetalk_dir=str(self.model_dir / "InfiniteTalk" / "single" / "infinitetalk.safetensors"),
-            quant_dir=None,
+            quant=quant,
+            quant_dir=quant_dir,
             wav2vec_dir=str(self.model_dir / "chinese-wav2vec2-base"),
             dit_path=None,
             lora_dir=[str(self.model_dir / "FusionX_LoRa" / "Wan2.1_I2V_14B_FusionX_LoRA.safetensors")],
@@ -278,7 +287,7 @@ class InfiniteTalkRunner:
             sample_audio_guide_scale=sample_audio_guide_scale,
             num_persistent_param_in_dit=0,
             audio_mode="localfile",
-            use_teacache=True,
+            use_teacache=use_teacache,
             teacache_thresh=0.3,
             use_apg=True,
             apg_momentum=-0.75,
@@ -294,8 +303,8 @@ class InfiniteTalkRunner:
         image_ref: str,
         audio_ref: str,
         prompt: str | None,
-        overrides: dict[str, object] | None = None,
-    ) -> tuple[Path, SimpleNamespace]:
+    overrides: dict[str, object] | None = None,
+) -> tuple[Path, SimpleNamespace]:
         import io
         import librosa
         import magic
@@ -322,6 +331,13 @@ class InfiniteTalkRunner:
                 raise FileNotFoundError(f"Critical assets still missing after reinitialization: {still_missing}")
 
         overrides = overrides or {}
+
+        quant = overrides.get("quant")
+        quant_dir = overrides.get("quant_dir")
+        if quant and quant_dir:
+            quant_path = Path(quant_dir)
+            if not quant_path.exists():
+                raise FileNotFoundError(f"Quantization file not found at {quant_path}")
 
         image_bytes = self._download_and_validate(
             _decode_reference(image_ref),
