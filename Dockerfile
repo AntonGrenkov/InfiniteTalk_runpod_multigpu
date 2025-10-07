@@ -21,32 +21,71 @@ RUN pip install --upgrade pip && \
     pip install --no-cache-dir -r infinitetalk/requirements.txt
 
 # Pre-download model weights into the image so runtime containers are ready to infer immediately.
-RUN set -eu; \
-    mkdir -p \
-        /workspace/models/Wan2.1-I2V-14B-480P \
-        /workspace/models/chinese-wav2vec2-base \
-        /workspace/models/InfiniteTalk/quant_models \
-        /workspace/models/FusionX_LoRa; \
-    huggingface-cli download Wan-AI/Wan2.1-I2V-14B-480P \
-        --local-dir /workspace/models/Wan2.1-I2V-14B-480P \
-        --local-dir-use-symlinks False; \
-    huggingface-cli download TencentGameMate/chinese-wav2vec2-base \
-        --local-dir /workspace/models/chinese-wav2vec2-base \
-        --local-dir-use-symlinks False; \
-    huggingface-cli download TencentGameMate/chinese-wav2vec2-base model.safetensors \
-        --revision refs/pr/1 \
-        --local-dir /workspace/models/chinese-wav2vec2-base \
-        --local-dir-use-symlinks False; \
-    huggingface-cli download MeiGen-AI/InfiniteTalk single/infinitalk.safetensors \
-        --local-dir /workspace/models/InfiniteTalk \
-        --local-dir-use-symlinks False; \
-    huggingface-cli download vrgamedevgirl84/Wan14BT2VFusioniX FusionX_LoRa/Wan2.1_I2V_14B_FusionX_LoRA.safetensors \
-        --local-dir /workspace/models/FusionX_LoRa \
-        --local-dir-use-symlinks False; \
-    if [ -f /workspace/models/FusionX_LoRa/FusionX_LoRa/Wan2.1_I2V_14B_FusionX_LoRA.safetensors ]; then \
-        mv /workspace/models/FusionX_LoRa/FusionX_LoRa/Wan2.1_I2V_14B_FusionX_LoRA.safetensors /workspace/models/FusionX_LoRa/Wan2.1_I2V_14B_FusionX_LoRA.safetensors; \
-        rmdir /workspace/models/FusionX_LoRa/FusionX_LoRa; \
-    fi
+RUN python - <<'PY'
+import shutil
+from pathlib import Path
+from huggingface_hub import snapshot_download, hf_hub_download
+
+root = Path("/workspace/models")
+root.mkdir(parents=True, exist_ok=True)
+
+def ensure_dir(path: Path) -> Path:
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+snapshot_download(
+    repo_id="Wan-AI/Wan2.1-I2V-14B-480P",
+    local_dir=str(ensure_dir(root / "Wan2.1-I2V-14B-480P")),
+    local_dir_use_symlinks=False,
+)
+
+snapshot_download(
+    repo_id="TencentGameMate/chinese-wav2vec2-base",
+    local_dir=str(ensure_dir(root / "chinese-wav2vec2-base")),
+    local_dir_use_symlinks=False,
+)
+
+hf_hub_download(
+    repo_id="TencentGameMate/chinese-wav2vec2-base",
+    filename="model.safetensors",
+    revision="refs/pr/1",
+    local_dir=str(root / "chinese-wav2vec2-base"),
+    local_dir_use_symlinks=False,
+)
+
+hf_hub_download(
+    repo_id="MeiGen-AI/InfiniteTalk",
+    filename="single/infinitalk.safetensors",
+    local_dir=str(ensure_dir(root / "InfiniteTalk")),
+    local_dir_use_symlinks=False,
+)
+
+try:
+    hf_hub_download(
+        repo_id="MeiGen-AI/InfiniteTalk",
+        filename="quant_models/infinitalk_single_fp8.safetensors",
+        local_dir=str(ensure_dir(root / "InfiniteTalk" / "quant_models")),
+        local_dir_use_symlinks=False,
+    )
+except Exception as exc:
+    print(f"⚠️  fp8 quant weights not available: {exc}")
+
+hf_hub_download(
+    repo_id="vrgamedevgirl84/Wan14BT2VFusioniX",
+    filename="FusionX_LoRa/Wan2.1_I2V_14B_FusionX_LoRA.safetensors",
+    local_dir=str(ensure_dir(root / "FusionX_LoRa")),
+    local_dir_use_symlinks=False,
+)
+
+nested = root / "FusionX_LoRa" / "FusionX_LoRa" / "Wan2.1_I2V_14B_FusionX_LoRA.safetensors"
+target = root / "FusionX_LoRa" / "Wan2.1_I2V_14B_FusionX_LoRA.safetensors"
+if nested.exists() and not target.exists():
+    shutil.move(str(nested), str(target))
+    try:
+        nested.parent.rmdir()
+    except OSError:
+        pass
+PY
 
 COPY start.sh /start.sh
 RUN chmod +x /start.sh
