@@ -105,7 +105,7 @@ class InfiniteTalkRunner:
             raise ValueError(f"Invalid file type {detected}; expected {expected_types}")
         return content
 
-    def _ensure_models(self, requested_quant: str | None = None) -> None:
+    def _ensure_models(self) -> None:
         if self._initialized:
             return
 
@@ -144,19 +144,6 @@ class InfiniteTalkRunner:
             local_dir=str(model_root / "InfiniteTalk"),
             local_dir_use_symlinks=False,
         )
-
-        # optional fp8
-        if requested_quant and str(requested_quant).lower() == "fp8":
-            try:
-                ensure_dir(model_root / "InfiniteTalk" / "quant_models")
-                hf_hub_download(
-                    repo_id="MeiGen-AI/InfiniteTalk",
-                    filename="quant_models/infinitalk_single_fp8.safetensors",
-                    local_dir=str(model_root / "InfiniteTalk" / "quant_models"),
-                    local_dir_use_symlinks=False,
-                )
-            except Exception as exc:
-                print(f"⚠️  fp8 weights unavailable: {exc}")
 
         # LoRA and clean up nested folder
         ensure_dir(model_root / "FusionX_LoRa")
@@ -199,17 +186,10 @@ class InfiniteTalkRunner:
         if use_teacache is None:
             use_teacache = True
         if quant and not quant_dir:
-            if str(quant).lower() == "fp8":
-                default_fp8 = self.model_dir / "InfiniteTalk" / "quant_models" / "infinitetalk_single_fp8.safetensors"
-                if default_fp8.exists():
-                    quant_dir = str(default_fp8)
-                else:
-                    raise FileNotFoundError(
-                        "fp8 quant weights are not baked into the image. "
-                        "Either rebuild the image with these assets or provide 'quant_dir'."
-                    )
-            else:
-                raise ValueError(f"Unsupported quant '{quant}'. Please supply 'quant_dir'.")
+            raise ValueError(
+                "Quantization requested but 'quant_dir' is not provided. "
+                "Download the desired quant weights manually and supply their path."
+            )
         if isinstance(options.get("mode"), str):
             mode = options["mode"]
 
@@ -270,8 +250,7 @@ class InfiniteTalkRunner:
         from PIL import Image as PILImage
 
         options = options or {}
-        requested_quant = options.get("quant")
-        self._ensure_models(requested_quant)
+        self._ensure_models()
 
         critical_assets = [
             self.model_dir / "FusionX_LoRa" / "Wan2.1_I2V_14B_FusionX_LoRA.safetensors",
@@ -282,7 +261,7 @@ class InfiniteTalkRunner:
         if missing_assets:
             print(f"--- RunPod: Missing critical assets detected {missing_assets}. Redownloading... ---")
             self._initialized = False
-            self._ensure_models(requested_quant)
+            self._ensure_models()
             critical_assets = [asset for asset in critical_assets]
             still_missing = [asset for asset in critical_assets if not asset.exists()]
             if still_missing:
@@ -291,14 +270,10 @@ class InfiniteTalkRunner:
         quant = options.get("quant")
         quant_dir = options.get("quant_dir")
         if quant and not quant_dir:
-            default_fp8 = self.model_dir / "InfiniteTalk" / "quant_models" / "infinitetalk_single_fp8.safetensors"
-            if default_fp8.exists():
-                quant_dir = str(default_fp8)
-            else:
-                raise FileNotFoundError(
-                    "Quantization requested but fp8 weights are not present in the image. "
-                    "Provide 'quant_dir' in the request or rebuild the image with these assets."
-                )
+            raise ValueError(
+                "Quantization requested but 'quant_dir' is missing. "
+                "Pass the downloaded quant weights path explicitly."
+            )
         if quant and quant_dir:
             quant_path = Path(quant_dir)
             if not quant_path.exists():
