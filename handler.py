@@ -10,6 +10,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import runpod
+from huggingface_hub import snapshot_download, hf_hub_download
 
 ROOT_DIR = Path(__file__).resolve().parent
 if str(ROOT_DIR) not in sys.path:
