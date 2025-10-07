@@ -20,35 +20,7 @@ RUN pip install --upgrade pip && \
     pip install --no-cache-dir runpod misaki[en] ninja psutil packaging flash_attn==2.7.4.post1 pydantic python-magic "huggingface_hub[cli]" soundfile librosa xformers==0.0.28 && \
     pip install --no-cache-dir -r infinitetalk/requirements.txt
 
-# Pre-download model weights into the image so runtime containers are ready to infer immediately.
-RUN mkdir -p /workspace/models/Wan2.1-I2V-14B-480P \
- && huggingface-cli download Wan-AI/Wan2.1-I2V-14B-480P \
-      --local-dir /workspace/models/Wan2.1-I2V-14B-480P \
-      --local-dir-use-symlinks False
-
-RUN mkdir -p /workspace/models/chinese-wav2vec2-base \
- && huggingface-cli download TencentGameMate/chinese-wav2vec2-base \
-      --local-dir /workspace/models/chinese-wav2vec2-base \
-      --local-dir-use-symlinks False
-
-RUN huggingface-cli download TencentGameMate/chinese-wav2vec2-base model.safetensors \
-      --revision refs/pr/1 \
-      --local-dir /workspace/models/chinese-wav2vec2-base \
-      --local-dir-use-symlinks False
-
-RUN mkdir -p /workspace/models/InfiniteTalk \
- && huggingface-cli download MeiGen-AI/InfiniteTalk \
-      --local-dir /workspace/models/InfiniteTalk \
-      --local-dir-use-symlinks False
-
-RUN mkdir -p /workspace/models/FusionX_LoRa \
- && huggingface-cli download vrgamedevgirl84/Wan14BT2VFusioniX FusionX_LoRa/Wan2.1_I2V_14B_FusionX_LoRA.safetensors \
-      --local-dir /workspace/models/FusionX_LoRa \
-      --local-dir-use-symlinks False \
- && if [ -f /workspace/models/FusionX_LoRa/FusionX_LoRa/Wan2.1_I2V_14B_FusionX_LoRA.safetensors ]; then \
-        mv /workspace/models/FusionX_LoRa/FusionX_LoRa/Wan2.1_I2V_14B_FusionX_LoRA.safetensors /workspace/models/FusionX_LoRa/Wan2.1_I2V_14B_FusionX_LoRA.safetensors; \
-        rmdir /workspace/models/FusionX_LoRa/FusionX_LoRa; \
-    fi
+# Model weights are downloaded at runtime.
 
 COPY start.sh /start.sh
 RUN chmod +x /start.sh

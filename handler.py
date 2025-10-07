@@ -109,30 +109,70 @@ class InfiniteTalkRunner:
             return
 
         model_root = self.model_dir
-        required_assets = {
-            "Wan2.1 base model": model_root / "Wan2.1-I2V-14B-480P" / "config.json",
-            "Wav2Vec2 base config": model_root / "chinese-wav2vec2-base" / "config.json",
-            "Wav2Vec2 safetensors": model_root / "chinese-wav2vec2-base" / "model.safetensors",
-            "InfiniteTalk weights": model_root / "InfiniteTalk" / "single" / "infinitetalk.safetensors",
-            "FusionX LoRA": model_root / "FusionX_LoRa" / "Wan2.1_I2V_14B_FusionX_LoRA.safetensors",
-        }
+        print("--- RunPod: Ensuring model assets ---")
 
-        optional_assets = {
-            "InfiniteTalk fp8 weights": model_root / "InfiniteTalk" / "quant_models" / "infinitetalk_single_fp8.safetensors",
-        }
+        # download Wan base
+        ensure_dir = lambda p: p.mkdir(parents=True, exist_ok=True) or p
+        ensure_dir(model_root / "Wan2.1-I2V-14B-480P")
+        snapshot_download(
+            repo_id="Wan-AI/Wan2.1-I2V-14B-480P",
+            local_dir=str(model_root / "Wan2.1-I2V-14B-480P"),
+            local_dir_use_symlinks=False,
+        )
 
-        print("--- RunPod: Verifying preloaded model assets ---")
-        missing = [desc for desc, path in required_assets.items() if not path.exists()]
-        for desc, path in required_assets.items():
-            print(f"   asset check: {path} -> {'OK' if path.exists() else 'MISSING'}")
-        for desc, path in optional_assets.items():
-            print(f"   asset check: {path} -> {'OK' if path.exists() else 'MISSING (optional)'}")
+        # wav2vec2 base + safetensors
+        ensure_dir(model_root / "chinese-wav2vec2-base")
+        snapshot_download(
+            repo_id="TencentGameMate/chinese-wav2vec2-base",
+            local_dir=str(model_root / "chinese-wav2vec2-base"),
+            local_dir_use_symlinks=False,
+        )
+        hf_hub_download(
+            repo_id="TencentGameMate/chinese-wav2vec2-base",
+            filename="model.safetensors",
+            revision="refs/pr/1",
+            local_dir=str(model_root / "chinese-wav2vec2-base"),
+            local_dir_use_symlinks=False,
+        )
 
-        if missing:
-            raise FileNotFoundError(
-                "; ".join(missing) + ". The container image is missing required weights. "
-                "Rebuild the image to bake in model assets."
-            )
+        # InfiniteTalk weights
+        ensure_dir(model_root / "InfiniteTalk")
+        hf_hub_download(
+            repo_id="MeiGen-AI/InfiniteTalk",
+            filename="single/infinitetalk.safetensors",
+            local_dir=str(model_root / "InfiniteTalk"),
+            local_dir_use_symlinks=False,
+        )
+
+        # optional fp8
+        if overrides.get("quant") and str(overrides["quant"]).lower() == "fp8":
+            try:
+                ensure_dir(model_root / "InfiniteTalk" / "quant_models")
+                hf_hub_download(
+                    repo_id="MeiGen-AI/InfiniteTalk",
+                    filename="quant_models/infinitalk_single_fp8.safetensors",
+                    local_dir=str(model_root / "InfiniteTalk" / "quant_models"),
+                    local_dir_use_symlinks=False,
+                )
+            except Exception as exc:
+                print(f"⚠️  fp8 weights unavailable: {exc}")
+
+        # LoRA and clean up nested folder
+        ensure_dir(model_root / "FusionX_LoRa")
+        hf_hub_download(
+            repo_id="vrgamedevgirl84/Wan14BT2VFusioniX",
+            filename="FusionX_LoRa/Wan2.1_I2V_14B_FusionX_LoRA.safetensors",
+            local_dir=str(model_root / "FusionX_LoRa"),
+            local_dir_use_symlinks=False,
+        )
+        nested = model_root / "FusionX_LoRa" / "FusionX_LoRa" / "Wan2.1_I2V_14B_FusionX_LoRA.safetensors"
+        if nested.exists():
+            target = model_root / "FusionX_LoRa" / "Wan2.1_I2V_14B_FusionX_LoRA.safetensors"
+            shutil.move(str(nested), str(target))
+            try:
+                nested.parent.rmdir()
+            except OSError:
+                pass
 
         self._initialized = True
 
