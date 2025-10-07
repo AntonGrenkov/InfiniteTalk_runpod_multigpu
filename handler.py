@@ -105,7 +105,7 @@ class InfiniteTalkRunner:
             raise ValueError(f"Invalid file type {detected}; expected {expected_types}")
         return content
 
-    def _ensure_models(self) -> None:
+    def _ensure_models(self, requested_quant: str | None = None) -> None:
         if self._initialized:
             return
 
@@ -146,7 +146,7 @@ class InfiniteTalkRunner:
         )
 
         # optional fp8
-        if overrides.get("quant") and str(overrides["quant"]).lower() == "fp8":
+        if requested_quant and str(requested_quant).lower() == "fp8":
             try:
                 ensure_dir(model_root / "InfiniteTalk" / "quant_models")
                 hf_hub_download(
@@ -186,16 +186,16 @@ class InfiniteTalkRunner:
         mode: str,
         chunk_frame_num: int,
         max_frame_num: int,
-        overrides: dict[str, object],
+        options: dict[str, object],
     ) -> SimpleNamespace:
-        size = str(overrides.get("size", "infinitetalk-720"))
-        sample_steps = int(overrides.get("sample_steps", 8))
-        sample_text_guide_scale = float(overrides.get("sample_text_guide_scale", 1.0))
-        sample_audio_guide_scale = float(overrides.get("sample_audio_guide_scale", 6.0))
-        color_correction_strength = float(overrides.get("color_correction_strength", 0.2))
-        quant = overrides.get("quant")
-        quant_dir = overrides.get("quant_dir")
-        use_teacache = overrides.get("use_teacache")
+        size = str(options.get("size", "infinitetalk-720"))
+        sample_steps = int(options.get("sample_steps", 8))
+        sample_text_guide_scale = float(options.get("sample_text_guide_scale", 1.0))
+        sample_audio_guide_scale = float(options.get("sample_audio_guide_scale", 6.0))
+        color_correction_strength = float(options.get("color_correction_strength", 0.2))
+        quant = options.get("quant")
+        quant_dir = options.get("quant_dir")
+        use_teacache = options.get("use_teacache")
         if use_teacache is None:
             use_teacache = True
         if quant and not quant_dir:
@@ -210,8 +210,8 @@ class InfiniteTalkRunner:
                     )
             else:
                 raise ValueError(f"Unsupported quant '{quant}'. Please supply 'quant_dir'.")
-        if isinstance(overrides.get("mode"), str):
-            mode = overrides["mode"]
+        if isinstance(options.get("mode"), str):
+            mode = options["mode"]
 
         return SimpleNamespace(
             task="infinitetalk-14B",
@@ -259,7 +259,7 @@ class InfiniteTalkRunner:
         image_ref: str,
         audio_ref: str,
         prompt: str | None,
-        overrides: dict[str, object] | None = None,
+        options: dict[str, object] | None = None,
     ) -> tuple[Path, SimpleNamespace]:
         import io
         import librosa
@@ -269,7 +269,9 @@ class InfiniteTalkRunner:
         import torch.multiprocessing as mp
         from PIL import Image as PILImage
 
-        self._ensure_models()
+        options = options or {}
+        requested_quant = options.get("quant")
+        self._ensure_models(requested_quant)
 
         critical_assets = [
             self.model_dir / "FusionX_LoRa" / "Wan2.1_I2V_14B_FusionX_LoRA.safetensors",
@@ -280,16 +282,14 @@ class InfiniteTalkRunner:
         if missing_assets:
             print(f"--- RunPod: Missing critical assets detected {missing_assets}. Redownloading... ---")
             self._initialized = False
-            self._ensure_models()
+            self._ensure_models(requested_quant)
             critical_assets = [asset for asset in critical_assets]
             still_missing = [asset for asset in critical_assets if not asset.exists()]
             if still_missing:
                 raise FileNotFoundError(f"Critical assets still missing after reinitialization: {still_missing}")
 
-        overrides = overrides or {}
-
-        quant = overrides.get("quant")
-        quant_dir = overrides.get("quant_dir")
+        quant = options.get("quant")
+        quant_dir = options.get("quant_dir")
         if quant and not quant_dir:
             default_fp8 = self.model_dir / "InfiniteTalk" / "quant_models" / "infinitetalk_single_fp8.safetensors"
             if default_fp8.exists():
@@ -362,7 +362,7 @@ class InfiniteTalkRunner:
             chunk_frame_num = frame_num
             max_frame_num = frame_num
 
-        requested_mode = overrides.get("mode")
+        requested_mode = options.get("mode")
         if requested_mode is not None:
             requested_mode = str(requested_mode).lower()
             if requested_mode not in {"clip", "streaming"}:
@@ -375,7 +375,7 @@ class InfiniteTalkRunner:
                 mode = "streaming"
                 chunk_frame_num = min(chunk_frame_num, 81)
                 max_frame_num = frame_num
-            overrides["mode"] = requested_mode
+            options["mode"] = requested_mode
 
         print(
             f"--- RunPod: Audio {total_audio_duration:.2f}s, frames {frame_num}, chunk {chunk_frame_num}, mode {mode} ---"
@@ -398,7 +398,7 @@ class InfiniteTalkRunner:
             mode,
             chunk_frame_num,
             max_frame_num,
-            overrides,
+            options,
         )
 
         temp_output_name = f"{uuid.uuid4()}"
@@ -490,16 +490,16 @@ def handler(event):
     if not image_ref or not audio_ref:
         return {"error": "Both 'image' and 'audio1' inputs are required."}
 
-    overrides: dict[str, object] = {}
+    options: dict[str, object] = {}
     for key, caster in OPTION_KEYS.items():
         if key in job_input and job_input[key] is not None:
             try:
-                overrides[key] = caster(job_input[key])
+                options[key] = caster(job_input[key])
             except Exception as exc:  # noqa: BLE001
                 return {"error": f"Invalid value for {key}: {exc}"}
 
     try:
-        video_path, used_args = RUNNER.generate(image_ref, audio_ref, prompt, overrides)
+        video_path, used_args = RUNNER.generate(image_ref, audio_ref, prompt, options)
     except Exception as exc:  # noqa: BLE001
         return {"error": str(exc)}
 
