@@ -21,26 +21,31 @@ RUN pip install --upgrade pip && \
     pip install --no-cache-dir -r infinitetalk/requirements.txt
 
 # Pre-download model weights into the image so runtime containers are ready to infer immediately.
-RUN mkdir -p /workspace/models && \
+RUN set -euo pipefail; \
+    mkdir -p \
+        /workspace/models/Wan2.1-I2V-14B-480P \
+        /workspace/models/chinese-wav2vec2-base \
+        /workspace/models/InfiniteTalk/quant_models \
+        /workspace/models/FusionX_LoRa; \
     huggingface-cli download Wan-AI/Wan2.1-I2V-14B-480P \
         --local-dir /workspace/models/Wan2.1-I2V-14B-480P \
-        --local-dir-use-symlinks False && \
+        --local-dir-use-symlinks False; \
     huggingface-cli download TencentGameMate/chinese-wav2vec2-base \
         --local-dir /workspace/models/chinese-wav2vec2-base \
-        --local-dir-use-symlinks False && \
+        --local-dir-use-symlinks False; \
     huggingface-cli download TencentGameMate/chinese-wav2vec2-base model.safetensors \
         --revision refs/pr/1 \
         --local-dir /workspace/models/chinese-wav2vec2-base \
-        --local-dir-use-symlinks False && \
-    huggingface-cli download MeiGen-AI/InfiniteTalk single/infinitetalk.safetensors \
+        --local-dir-use-symlinks False; \
+    huggingface-cli download MeiGen-AI/InfiniteTalk single/infinitalk.safetensors \
         --local-dir /workspace/models/InfiniteTalk \
-        --local-dir-use-symlinks False && \
-    huggingface-cli download MeiGen-AI/InfiniteTalk quant_models/infinitalk_single_fp8.safetensors \
+        --local-dir-use-symlinks False; \
+    (huggingface-cli download MeiGen-AI/InfiniteTalk quant_models/infinitalk_single_fp8.safetensors \
         --local-dir /workspace/models/InfiniteTalk/quant_models \
-        --local-dir-use-symlinks False && \
+        --local-dir-use-symlinks False || echo "⚠️  fp8 quant weights not available; skipping"); \
     huggingface-cli download vrgamedevgirl84/Wan14BT2VFusioniX FusionX_LoRa/Wan2.1_I2V_14B_FusionX_LoRA.safetensors \
         --local-dir /workspace/models/FusionX_LoRa \
-        --local-dir-use-symlinks False && \
+        --local-dir-use-symlinks False; \
     if [ -f /workspace/models/FusionX_LoRa/FusionX_LoRa/Wan2.1_I2V_14B_FusionX_LoRA.safetensors ]; then \
         mv /workspace/models/FusionX_LoRa/FusionX_LoRa/Wan2.1_I2V_14B_FusionX_LoRA.safetensors /workspace/models/FusionX_LoRa/Wan2.1_I2V_14B_FusionX_LoRA.safetensors; \
         rmdir /workspace/models/FusionX_LoRa/FusionX_LoRa; \
@@ -50,6 +55,6 @@ COPY start.sh /start.sh
 RUN chmod +x /start.sh
 
 ENV WAN_GPU_COUNT=0 \
-    PYTHONPATH=/workspace:/workspace/infinitetalk:$PYTHONPATH
+    PYTHONPATH=/workspace:/workspace/infinitetalk
 
 CMD ["/start.sh"]

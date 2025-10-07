@@ -114,14 +114,19 @@ class InfiniteTalkRunner:
             "Wav2Vec2 base config": model_root / "chinese-wav2vec2-base" / "config.json",
             "Wav2Vec2 safetensors": model_root / "chinese-wav2vec2-base" / "model.safetensors",
             "InfiniteTalk weights": model_root / "InfiniteTalk" / "single" / "infinitetalk.safetensors",
-            "InfiniteTalk fp8 weights": model_root / "InfiniteTalk" / "quant_models" / "infinitetalk_single_fp8.safetensors",
             "FusionX LoRA": model_root / "FusionX_LoRa" / "Wan2.1_I2V_14B_FusionX_LoRA.safetensors",
+        }
+
+        optional_assets = {
+            "InfiniteTalk fp8 weights": model_root / "InfiniteTalk" / "quant_models" / "infinitetalk_single_fp8.safetensors",
         }
 
         print("--- RunPod: Verifying preloaded model assets ---")
         missing = [desc for desc, path in required_assets.items() if not path.exists()]
         for desc, path in required_assets.items():
             print(f"   asset check: {path} -> {'OK' if path.exists() else 'MISSING'}")
+        for desc, path in optional_assets.items():
+            print(f"   asset check: {path} -> {'OK' if path.exists() else 'MISSING (optional)'}")
 
         if missing:
             raise FileNotFoundError(
@@ -154,7 +159,14 @@ class InfiniteTalkRunner:
             use_teacache = True
         if quant and not quant_dir:
             if str(quant).lower() == "fp8":
-                quant_dir = str(self.model_dir / "InfiniteTalk" / "quant_models" / "infinitetalk_single_fp8.safetensors")
+                default_fp8 = self.model_dir / "InfiniteTalk" / "quant_models" / "infinitetalk_single_fp8.safetensors"
+                if default_fp8.exists():
+                    quant_dir = str(default_fp8)
+                else:
+                    raise FileNotFoundError(
+                        "fp8 quant weights are not baked into the image. "
+                        "Either rebuild the image with these assets or provide 'quant_dir'."
+                    )
             else:
                 raise ValueError(f"Unsupported quant '{quant}'. Please supply 'quant_dir'.")
         if isinstance(overrides.get("mode"), str):
@@ -206,8 +218,8 @@ class InfiniteTalkRunner:
         image_ref: str,
         audio_ref: str,
         prompt: str | None,
-    overrides: dict[str, object] | None = None,
-) -> tuple[Path, SimpleNamespace]:
+        overrides: dict[str, object] | None = None,
+    ) -> tuple[Path, SimpleNamespace]:
         import io
         import librosa
         import magic
