@@ -2,7 +2,6 @@ import base64
 import json
 import os
 import shutil
-import subprocess
 import sys
 import tempfile
 import urllib.request
@@ -109,126 +108,26 @@ class InfiniteTalkRunner:
         if self._initialized:
             return
 
-        print("--- RunPod: Initializing models ---")
         model_root = self.model_dir
-        model_root.mkdir(parents=True, exist_ok=True)
+        required_assets = {
+            "Wan2.1 base model": model_root / "Wan2.1-I2V-14B-480P" / "config.json",
+            "Wav2Vec2 base config": model_root / "chinese-wav2vec2-base" / "config.json",
+            "Wav2Vec2 safetensors": model_root / "chinese-wav2vec2-base" / "model.safetensors",
+            "InfiniteTalk weights": model_root / "InfiniteTalk" / "single" / "infinitetalk.safetensors",
+            "InfiniteTalk fp8 weights": model_root / "InfiniteTalk" / "quant_models" / "infinitetalk_single_fp8.safetensors",
+            "FusionX LoRA": model_root / "FusionX_LoRa" / "Wan2.1_I2V_14B_FusionX_LoRA.safetensors",
+        }
 
-        def _move_nested_file(base_dir: Path, nested_rel_path: str, target_name: str) -> None:
-            nested_path = base_dir / nested_rel_path
-            target_path = base_dir / target_name
-            if nested_path.exists() and not target_path.exists():
-                target_path.parent.mkdir(parents=True, exist_ok=True)
-                shutil.move(str(nested_path), str(target_path))
-                # Clean up empty parent directories
-                try:
-                    nested_path.parent.rmdir()
-                except OSError:
-                    pass
+        print("--- RunPod: Verifying preloaded model assets ---")
+        missing = [desc for desc, path in required_assets.items() if not path.exists()]
+        for desc, path in required_assets.items():
+            print(f"   asset check: {path} -> {'OK' if path.exists() else 'MISSING'}")
 
-        downloads = [
-            {
-                "description": "Wan2.1 base model",
-                "paths": [model_root / "Wan2.1-I2V-14B-480P" / "config.json"],
-                "command": [
-                    "huggingface-cli",
-                    "download",
-                    "Wan-AI/Wan2.1-I2V-14B-480P",
-                    "--local-dir",
-                    str(model_root / "Wan2.1-I2V-14B-480P"),
-                    "--local-dir-use-symlinks",
-                    "False",
-                ],
-            },
-            {
-                "description": "Chinese wav2vec2 base",
-                "paths": [model_root / "chinese-wav2vec2-base" / "config.json"],
-                "command": [
-                    "huggingface-cli",
-                    "download",
-                    "TencentGameMate/chinese-wav2vec2-base",
-                    "--local-dir",
-                    str(model_root / "chinese-wav2vec2-base"),
-                    "--local-dir-use-symlinks",
-                    "False",
-                ],
-            },
-            {
-                "description": "Chinese wav2vec2 safetensors",
-                "paths": [model_root / "chinese-wav2vec2-base" / "model.safetensors"],
-                "command": [
-                    "huggingface-cli",
-                    "download",
-                    "TencentGameMate/chinese-wav2vec2-base",
-                    "model.safetensors",
-                    "--revision",
-                    "refs/pr/1",
-                    "--local-dir",
-                    str(model_root / "chinese-wav2vec2-base"),
-                    "--local-dir-use-symlinks",
-                    "False",
-                ],
-            },
-            {
-                "description": "InfiniteTalk weights",
-                "paths": [model_root / "InfiniteTalk" / "single" / "infinitetalk.safetensors"],
-                "command": [
-                    "huggingface-cli",
-                    "download",
-                    "MeiGen-AI/InfiniteTalk",
-                    "--local-dir",
-                    str(model_root / "InfiniteTalk"),
-                    "--local-dir-use-symlinks",
-                    "False",
-                ],
-            },
-            {
-                "description": "FusionX LoRA",
-                "paths": [model_root / "FusionX_LoRa" / "Wan2.1_I2V_14B_FusionX_LoRA.safetensors"],
-                "command": [
-                    "huggingface-cli",
-                    "download",
-                    "vrgamedevgirl84/Wan14BT2VFusioniX",
-                    "FusionX_LoRa/Wan2.1_I2V_14B_FusionX_LoRA.safetensors",
-                    "--local-dir",
-                    str(model_root / "FusionX_LoRa"),
-                    "--local-dir-use-symlinks",
-                    "False",
-                ],
-                "post": lambda: _move_nested_file(
-                    model_root / "FusionX_LoRa",
-                    "FusionX_LoRa/Wan2.1_I2V_14B_FusionX_LoRA.safetensors",
-                    "Wan2.1_I2V_14B_FusionX_LoRA.safetensors",
-                ),
-            },
-        ]
-
-        for item in downloads:
-            paths = item["paths"]
-            if all(path.exists() for path in paths):
-                print(f"--- {item['description']} already present ---")
-                continue
-            print(f"--- Downloading {item['description']} via huggingface-cli ---")
-            subprocess.run(item["command"], check=True)
-            if callable(item.get("post")):
-                item["post"]()
-            parent_dirs = {path.parent for path in paths}
-            for parent in parent_dirs:
-                if parent.exists():
-                    print(f"   contents of {parent}:")
-                    for child in sorted(parent.iterdir()):
-                        size = child.stat().st_size if child.is_file() else 0
-                        kind = "file" if child.is_file() else "dir"
-                        print(f"      - {child.name} ({kind}, {size} bytes)")
-            if not all(path.exists() for path in paths):
-                raise FileNotFoundError(f"Download of {item['description']} incomplete; missing {[str(p) for p in paths]}" )
-
-        print("--- RunPod: Model assets ready ---")
-        for asset in [
-            model_root / "Wan2.1-I2V-14B-480P" / "config.json",
-            model_root / "FusionX_LoRa" / "Wan2.1_I2V_14B_FusionX_LoRA.safetensors",
-            model_root / "InfiniteTalk" / "single" / "infinitetalk.safetensors",
-        ]:
-            print(f"   asset check: {asset} -> {'OK' if asset.exists() else 'MISSING'}")
+        if missing:
+            raise FileNotFoundError(
+                "; ".join(missing) + ". The container image is missing required weights. "
+                "Rebuild the image to bake in model assets."
+            )
 
         self._initialized = True
 
@@ -253,6 +152,11 @@ class InfiniteTalkRunner:
         use_teacache = overrides.get("use_teacache")
         if use_teacache is None:
             use_teacache = True
+        if quant and not quant_dir:
+            if str(quant).lower() == "fp8":
+                quant_dir = str(self.model_dir / "InfiniteTalk" / "quant_models" / "infinitetalk_single_fp8.safetensors")
+            else:
+                raise ValueError(f"Unsupported quant '{quant}'. Please supply 'quant_dir'.")
         if isinstance(overrides.get("mode"), str):
             mode = overrides["mode"]
 
@@ -294,7 +198,6 @@ class InfiniteTalkRunner:
             apg_norm_threshold=55,
             color_correction_strength=color_correction_strength,
             scene_seg=False,
-            quant=None,
             prompt=prompt,
         )
 
@@ -546,6 +449,9 @@ def handler(event):
         "sample_audio_guide_scale": used_args.sample_audio_guide_scale,
         "color_correction_strength": used_args.color_correction_strength,
         "mode": used_args.mode,
+        "quant": used_args.quant,
+        "quant_dir": used_args.quant_dir,
+        "use_teacache": used_args.use_teacache,
     }
 
     try:
