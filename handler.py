@@ -249,6 +249,15 @@ class InfiniteTalkRunner:
 
         quant = overrides.get("quant")
         quant_dir = overrides.get("quant_dir")
+        if quant and not quant_dir:
+            default_fp8 = self.model_dir / "InfiniteTalk" / "quant_models" / "infinitetalk_single_fp8.safetensors"
+            if default_fp8.exists():
+                quant_dir = str(default_fp8)
+            else:
+                raise FileNotFoundError(
+                    "Quantization requested but fp8 weights are not present in the image. "
+                    "Provide 'quant_dir' in the request or rebuild the image with these assets."
+                )
         if quant and quant_dir:
             quant_path = Path(quant_dir)
             if not quant_path.exists():
