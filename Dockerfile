@@ -24,7 +24,7 @@ RUN pip install --upgrade pip && \
 RUN python - <<'PY'
 import shutil
 from pathlib import Path
-from huggingface_hub import snapshot_download, hf_hub_download
+from huggingface_hub import snapshot_download
 
 root = Path("/workspace/models")
 root.mkdir(parents=True, exist_ok=True)
@@ -45,34 +45,34 @@ snapshot_download(
     local_dir_use_symlinks=False,
 )
 
-hf_hub_download(
+snapshot_download(
     repo_id="TencentGameMate/chinese-wav2vec2-base",
-    filename="model.safetensors",
-    revision="refs/pr/1",
+    allow_patterns=["model.safetensors"],
     local_dir=str(root / "chinese-wav2vec2-base"),
     local_dir_use_symlinks=False,
+    revision="refs/pr/1",
 )
 
-hf_hub_download(
+snapshot_download(
     repo_id="MeiGen-AI/InfiniteTalk",
-    filename="single/infinitalk.safetensors",
+    allow_patterns=["single/infinitalk.safetensors"],
     local_dir=str(ensure_dir(root / "InfiniteTalk")),
     local_dir_use_symlinks=False,
 )
 
 try:
-    hf_hub_download(
+    snapshot_download(
         repo_id="MeiGen-AI/InfiniteTalk",
-        filename="quant_models/infinitalk_single_fp8.safetensors",
+        allow_patterns=["quant_models/infinitalk_single_fp8.safetensors"],
         local_dir=str(ensure_dir(root / "InfiniteTalk" / "quant_models")),
         local_dir_use_symlinks=False,
     )
 except Exception as exc:
     print(f"⚠️  fp8 quant weights not available: {exc}")
 
-hf_hub_download(
+snapshot_download(
     repo_id="vrgamedevgirl84/Wan14BT2VFusioniX",
-    filename="FusionX_LoRa/Wan2.1_I2V_14B_FusionX_LoRA.safetensors",
+    allow_patterns=["FusionX_LoRa/Wan2.1_I2V_14B_FusionX_LoRA.safetensors"],
     local_dir=str(ensure_dir(root / "FusionX_LoRa")),
     local_dir_use_symlinks=False,
 )
